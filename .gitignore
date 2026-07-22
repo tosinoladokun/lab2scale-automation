@@ -23,3 +23,7 @@ scripts/try_*.py
 
 # OS
 .DS_Store
+
+# Editor swap files
+*.swp
+*.swo
