@@ -57,7 +57,7 @@ class ResearchOrchestrator:
         max_items: int | None = None,
         week_window_days: int | None = 7,
         search_threshold: float = 6.0,
-        search_time_range: str | None = "week",
+        search_days: int = 30,
         max_results_per_query: int = 10,
         # Injected for tests; otherwise built from TAVILY_API_KEY.
         tavily_searcher: TavilySearcher | None = None,
@@ -72,7 +72,7 @@ class ResearchOrchestrator:
         # strict at `threshold`, while broad web search uses `search_threshold`
         # so genuinely relevant deal flow isn't lost to the high RSS bar.
         self.search_threshold = search_threshold
-        self.search_time_range = search_time_range
+        self.search_days = search_days
         self.max_results_per_query = max_results_per_query
 
         # Track which resources we created so we only close those.
@@ -111,7 +111,7 @@ class ResearchOrchestrator:
                 domain, self.tavily, self.llm, self.dedup, self.store,
                 threshold=self.search_threshold,
                 max_results_per_query=self.max_results_per_query,
-                time_range=self.search_time_range,
+                days=self.search_days,
             )
             runs.append(search_agent.run())
 

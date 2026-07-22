@@ -64,6 +64,7 @@ class TavilySearcher:
         *,
         time_range: str | None = None,
         topic: str | None = None,
+        days: int | None = None,
     ) -> list[dict]:
         """Run a search and return a list of result dicts.
 
@@ -71,9 +72,11 @@ class TavilySearcher:
         (snippet), ``score``. Returns an empty list on any API error so the
         caller can continue gracefully.
 
-        ``time_range`` ("day" | "week" | "month" | "year") bounds results to
-        recently-published pages — used by research search for fresh daily
-        deal flow. ``topic`` ("general" | "news") biases the index. Both are
+        ``topic="news"`` + ``days=N`` is the reliable recency filter — it returns
+        only pages published within the last N days, each with a
+        ``published_date``. (``time_range`` is effectively ignored for the
+        default "general" topic and returns no dates, so it can't keep stale
+        content out — prefer topic=news + days for freshness.) All three are
         omitted from the payload when None (default Tavily behavior).
         """
         n = max_results if max_results is not None else self.max_results
@@ -90,6 +93,8 @@ class TavilySearcher:
             payload["time_range"] = time_range
         if topic:
             payload["topic"] = topic
+        if days is not None:
+            payload["days"] = days
         try:
             resp = await self._client.post(_BASE_URL, json=payload)
             resp.raise_for_status()

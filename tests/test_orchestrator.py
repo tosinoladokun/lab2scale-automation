@@ -47,7 +47,7 @@ class FakeTavily:
     def __init__(self, results):
         self.results = results
 
-    async def search(self, query, max_results=None, *, time_range=None, topic=None):
+    async def search(self, query, max_results=None, *, time_range=None, topic=None, days=None):
         return [dict(r) for r in self.results]
 
     async def close(self):

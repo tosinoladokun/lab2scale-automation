@@ -146,7 +146,7 @@ async def sweep() -> None:
         scraper=scraper, llm=llm, dedup=dedup, store=store, methods=methods,
         week_window_days=int(os.getenv("RESEARCH_WINDOW_DAYS", "7")),
         search_threshold=float(os.getenv("RESEARCH_SEARCH_THRESHOLD", "6.0")),
-        search_time_range=os.getenv("RESEARCH_SEARCH_TIME_RANGE", "week"),
+        search_days=int(os.getenv("RESEARCH_SEARCH_DAYS", "30")),
     )
     # Events discover via Tavily web search (built from TAVILY_API_KEY) — no
     # shared scraper/methods needed.

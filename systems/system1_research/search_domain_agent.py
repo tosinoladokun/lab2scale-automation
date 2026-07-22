@@ -32,34 +32,32 @@ from lib.tavily_searcher import TavilySearcher
 # (not research papers or investments). Each focus area gets two angles: one
 # weighted to our ecosystem (MIT/Boston > Stanford/Berkeley/national labs), one
 # broad-US. Keys MUST match the System 1 sector names (config/domains/*.yaml stems).
-# Three angles per sector: (1) ecosystem-weighted spin-outs/founders, (2) broad-US
-# early companies, (3) freshest deal-flow signal — recently funded / accelerator
-# cohort / grant-awarded early teams. Keys MUST match the System 1 sector names.
+# Two sector-anchored angles per focus area: (1) startups raising / spinning out,
+# (2) new companies shipping pilots / partnerships. Run as Tavily topic="news"
+# with a `days` window, so results are recent and dated (no stale content) and
+# the sector keywords lead (no generic accelerator/VC noise). MIT/Boston
+# ecosystem preference is handled by the scoring prompt, not the query.
+# Keys MUST match the System 1 sector names.
 DOMAIN_SEARCH_QUERIES: dict[str, list[str]] = {
     "nuclear_advanced_energy": [
-        "early-stage nuclear SMR OR advanced fission OR fusion startup OR spin-out founder pre-seed OR seed",
-        "MIT OR national lab clean firm power OR advanced nuclear spin-out new company prototype",
-        "nuclear OR SMR OR advanced energy startup raised pre-seed OR seed OR DOE OR ARPA-E grant OR accelerator cohort",
+        "nuclear SMR advanced reactor fusion startup funding OR raises OR spinout",
+        "advanced nuclear OR clean firm power company new reactor pilot OR demonstration OR partnership",
     ],
     "water_cooling": [
-        "atmospheric water generation OR datacenter cooling OR waste-heat startup OR spin-out founder pre-seed OR seed",
-        "early-stage water-energy nexus OR liquid cooling technology company new prototype OR pilot",
-        "datacenter cooling OR water technology startup raised pre-seed OR seed OR grant OR accelerator cohort",
+        "datacenter cooling OR atmospheric water OR waste heat startup funding OR raises OR spinout",
+        "liquid cooling OR water technology company new pilot OR deployment OR partnership",
     ],
     "power_electronics": [
-        "GaN OR SiC OR wide-bandgap power electronics startup OR spin-out founder pre-seed OR seed",
-        "MIT OR Stanford power electronics OR power conversion spin-out new company prototype",
-        "GaN OR SiC OR power electronics startup raised pre-seed OR seed OR grant OR YC OR accelerator cohort",
+        "GaN SiC wide-bandgap power electronics startup funding OR raises OR spinout",
+        "power electronics OR power conversion company new chip OR module pilot OR partnership",
     ],
     "autonomous_systems": [
-        "autonomous vehicle safety OR defense ground robotics OR industrial autonomy startup OR spin-out founder",
-        "early-stage deterministic control OR autonomy software company pre-seed OR seed new prototype",
-        "autonomy OR robotics OR autonomous vehicle startup raised pre-seed OR seed OR DARPA OR accelerator cohort",
+        "autonomous vehicle OR robotics OR industrial autonomy startup funding OR raises OR spinout",
+        "self-driving OR defense robotics OR autonomy company new pilot OR contract OR deployment",
     ],
     "advanced_manufacturing": [
-        "advanced manufacturing AI process OR roll-to-roll OR hardware scale-up startup OR spin-out founder",
-        "MIT OR national lab advanced manufacturing OR materials spin-out new company pre-seed OR seed",
-        "advanced manufacturing OR hardware OR materials startup raised pre-seed OR seed OR grant OR accelerator cohort",
+        "advanced manufacturing OR hardware OR materials startup funding OR raises OR spinout",
+        "manufacturing technology OR roll-to-roll company new pilot OR factory OR partnership",
     ],
 }
 
@@ -92,7 +90,7 @@ class SearchDomainAgent:
         *,
         threshold: float = 6.0,
         max_results_per_query: int = 10,
-        time_range: str | None = "week",
+        days: int = 30,
         _now: datetime | None = None,
     ):
         self.focus_area = focus_area
@@ -102,7 +100,8 @@ class SearchDomainAgent:
         self.store = store
         self.threshold = threshold
         self.max_results_per_query = max_results_per_query
-        self.time_range = time_range
+        # Recency window (Tavily news topic): only pages from the last N days.
+        self.days = days
         self._now = _now
         self.name = f"{focus_area}_search_agent"
         self.queries = DOMAIN_SEARCH_QUERIES.get(focus_area, [])
@@ -117,7 +116,8 @@ class SearchDomainAgent:
         results = await asyncio.gather(
             *(
                 self.searcher.search(
-                    q, max_results=self.max_results_per_query, time_range=self.time_range
+                    q, max_results=self.max_results_per_query,
+                    topic="news", days=self.days,
                 )
                 for q in self.queries
             ),
@@ -289,8 +289,8 @@ class SearchDomainAgent:
 
     async def run(self) -> dict:
         self.log.info(
-            "Running %s (Tavily search, threshold=%.1f, time_range=%s)",
-            self.name, self.threshold, self.time_range or "any",
+            "Running %s (Tavily news search, threshold=%.1f, last %dd)",
+            self.name, self.threshold, self.days,
         )
         raw, search_errors = await self._search_all()
         fetched = len(raw)

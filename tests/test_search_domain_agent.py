@@ -19,8 +19,8 @@ class FakeTavily:
         self.results = results
         self.calls = []
 
-    async def search(self, query, max_results=None, *, time_range=None, topic=None):
-        self.calls.append((query, time_range))
+    async def search(self, query, max_results=None, *, time_range=None, topic=None, days=None):
+        self.calls.append({"query": query, "topic": topic, "days": days})
         return [dict(r) for r in self.results]
 
     async def close(self):
@@ -199,16 +199,18 @@ def test_enriches_contacts_when_extraction_finds_no_founders():
     assert llm.extract_calls == 2  # original extraction + one enrichment
 
 
-def test_passes_time_range_to_searcher():
+def test_uses_news_topic_and_days_window():
+    """Research search must run as topic=news with a days window — that's the
+    only reliable recency filter (keeps stale content out)."""
     results = [{"url": "https://ex.com/1", "title": "X", "content": "X", "score": 0.1}]
 
     async def body():
         store = await _fresh_store()
         searcher = FakeTavily(results)
-        await _agent(store, searcher, FakeResearchLLM({}), time_range="day").run()
+        await _agent(store, searcher, FakeResearchLLM({}), days=14).run()
         await store.close()
         return searcher.calls
 
     calls = asyncio.run(body())
     assert calls, "searcher should have been called"
-    assert all(time_range == "day" for _, time_range in calls)
+    assert all(c["topic"] == "news" and c["days"] == 14 for c in calls)
