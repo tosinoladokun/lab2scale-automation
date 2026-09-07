@@ -17,6 +17,17 @@ from lib.llm import LLMFilter
 _BULLET_RE = re.compile(r"^\s*(?:\d+[.)]\s+|[-•*]\s+)(.*?)\s*$")
 
 
+def _company_name(finding: dict) -> str:
+    """The company name for a heading: the part of the title before an
+    em/en/hyphen dash ("Ferveret — cooling for datacenters" → "Ferveret"),
+    else the whole title."""
+    title = (finding.get("title") or "").strip()
+    for sep in (" — ", " – ", " - "):
+        if sep in title:
+            return title.split(sep, 1)[0].strip()
+    return title
+
+
 def parse_bullets(text: str) -> list[str]:
     """Pull numbered or hyphenated bullet items out of LLM text.
 
@@ -127,6 +138,8 @@ class ReportSummarizer:
         for focus, items in grouped.items():
             items.sort(key=lambda x: x.get("relevance_score") or 0, reverse=True)
             del items[_MAX_PER_GROUP:]
+            for it in items:
+                it["company"] = _company_name(it)
         # Order focus areas by the canonical sequence (research priorities).
         ordered_keys = list(FOCUS_LABELS.keys()) + [
             k for k in grouped if k not in FOCUS_LABELS
