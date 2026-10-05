@@ -27,7 +27,7 @@ Read this before deploying — it's the surface area you need to think about.
 | Variable | Default | Notes |
 |---|---|---|
 | `REPORT_RECIPIENT` | `team@lab-2-scale.com` | Where the weekly brief goes (primary `to`). |
-| `REPORT_CC` | _(none)_ | Extra CC recipients — comma- or semicolon-separated. Read at send time, so editing it (e.g. in Railway) changes the distribution list with no redeploy. Omitted from the payload when empty. |
+| `REPORT_CC` | _(none)_ | Extra CC recipients — comma- or semicolon-separated. Read at send time, so editing the Actions secret changes the distribution list with no code change. Omitted from the payload when empty. |
 | `REPORT_FROM` | `reports@lab-2-scale.com` | Must be a domain verified in Resend. |
 
 ### LLM models
@@ -47,7 +47,7 @@ Read this before deploying — it's the surface area you need to think about.
 |---|---|---|
 | `TAVILY_API_KEY` | System 2 (events) | **Required for event discovery.** System 2 finds events via Tavily web search (one query per focus area × city). Without it, events are skipped (research still runs). Free tier: 1000 searches/month; a full sweep uses 15. |
 | `CRUNCHBASE_API_KEY` | startup tracking | Not yet wired. |
-| `RUN_SCHEDULE`, `REPORT_DAY`, `REPORT_TIME` | scheduler | Documentation only — actual scheduling is configured at the platform level (Railway cron, Cloud Scheduler, etc.). |
+| `RUN_SCHEDULE`, `REPORT_DAY`, `REPORT_TIME` | scheduler | Documentation only — actual scheduling is the `cron:` in `.github/workflows/weekly-brief.yml`. |
 
 ---
 

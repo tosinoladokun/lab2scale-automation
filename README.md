@@ -183,58 +183,76 @@ Automation/
 
 ---
 
-## Deployment — Railway (ephemeral model)
+## Deployment — GitHub Actions (free)
 
-Auto-deploy on push to main: connect this repo to Railway once, and every
-merge to `main` triggers a rebuild and redeploy.
+The weekly brief runs as a scheduled GitHub Actions workflow —
+[`.github/workflows/weekly-brief.yml`](.github/workflows/weekly-brief.yml).
+No external host, no bill: a weekly ~2-minute run uses a handful of the
+2,000 free Actions minutes/month.
 
-**The deployment is intentionally ephemeral.** Each weekly cron run is a
-fresh container: init-db creates a clean SQLite, the sweep finds whatever
-is new in the past week, the report goes out, the container exits and the
-DB is discarded. The next week starts from scratch — no volume, no
-Postgres, no cross-week state.
+**Dedup state persists across runs.** The runner itself is ephemeral, but
+the SQLite dedup DB (`data/lab2scale.db`) is carried between weeks on a
+dedicated, single-commit, force-pushed `state` branch — restored before the
+run, pushed back after a successful send. This matters because the research
+**web-search path looks back 30 days** (`RESEARCH_SEARCH_DAYS`), so
+consecutive weekly runs overlap; without the carried-over DB the brief would
+re-report the same companies for weeks. A failed run is *not* persisted, so a
+mid-run failure simply re-sweeps cleanly next time rather than inheriting a
+half-updated "reported" state. The DB never touches `main`.
 
-Why this works:
-- The rolling 7-day date filter in `BaseAgent` already drops anything
-  older than a week, so `seen_hashes` adds nothing meaningful across runs.
-- Lab2Scale's brief is "what's new this week" — by definition fresh.
-- One container, one run, one email. Simplest possible operational shape.
+### One-time setup
 
-### One-time setup (3 minutes)
-
-1. **Create a Railway project** at https://railway.app → New Project → Deploy from GitHub repo → pick `lab2scale-automation`. Railway reads `Dockerfile` + `railway.toml` and builds.
-
-2. **Set environment variables** in the service's Variables tab (paste these in; see `context.md` for the full reference):
+1. **Add the secrets.** Repo → Settings → Secrets and variables → Actions →
+   *New repository secret*, one per line below. Required for the full run are
+   the first three; the rest enable optional features (they self-disable when
+   unset). See `context.md` for the full reference.
    ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   RESEND_API_KEY=re_...
-   REPORT_RECIPIENT=team@lab-2-scale.com
-   REPORT_FROM=reports@lab-2-scale.com
-   SWEEP_METHODS=rss
-   LOG_LEVEL=INFO
+   ANTHROPIC_API_KEY      # required — LLM scoring / extraction / summary
+   TAVILY_API_KEY         # required — research + event discovery
+   RESEND_API_KEY         # required — sending the brief
+   REPORT_RECIPIENT       # optional — who receives it
+   REPORT_FROM            # optional — From address
+   REPORT_CC              # optional — extra CC recipients
+   LEADS_WEBAPP_URL       # optional — Apps Script leads sheet
+   LEADS_WEBAPP_SECRET    # optional — shared secret for the above
    ```
+   Non-secret research tuning (`RESEARCH_WINDOW_DAYS`, `RESEARCH_SEARCH_THRESHOLD`,
+   `RESEARCH_SEARCH_DAYS`) lives as plain `env:` in the workflow — edit it there.
 
-3. **Verify the cron schedule.** `railway.toml` declares one weekly cron — Monday 14:00 UTC (9am ET) running `python main.py full`. That's both the sweep and the report in one shot. If you want to adjust, the schedule lives in `railway.toml` → `[deploy] cronSchedule`.
+2. **Confirm the schedule.** The workflow declares one weekly cron — Monday
+   16:00 UTC (9am PT) running `python main.py full` (sweep + report in one
+   shot). To adjust, edit the `cron:` line under `on.schedule`. Note GitHub
+   cron is fixed-UTC and can't follow DST (`0 17 * * 1` holds 9am through
+   winter); for daily cadence use `0 16 * * *` and set `RESEARCH_WINDOW_DAYS`
+   to `"1"`.
 
-4. **Confirm auto-deploy.** In the service settings → Source, make sure the branch is set to `main`. Railway shows recent deploys in the dashboard — push something small to `main` and watch a rebuild kick off.
+3. **That's it — no deploy step.** Actions always runs the workflow as it
+   exists on the default branch; merging to `main` is the whole "deploy".
+
+### Running it on demand
+
+The workflow has a `workflow_dispatch` trigger: Actions tab → *Weekly
+intelligence brief* → *Run workflow*. Tick **dry_run** to render the email to
+an artifact (`latest_report`) without sending or touching dedup state —
+handy for previewing template changes.
 
 ### Verifying the first run
 
-- The first Monday after setup, Railway will trigger the cron at 14:00 UTC.
-- Logs live in the Railway dashboard under the service's Deployments tab.
+- The first Monday after setup, Actions triggers the cron at 16:00 UTC.
+- Logs live under the repo's **Actions** tab, per run.
 - The email lands in `REPORT_RECIPIENT`'s inbox.
-- The SQLite DB persists on the volume; subsequent runs reuse it.
+- After the first real run a `state` branch appears holding `lab2scale.db`;
+  subsequent runs restore and update it.
 
 ### Future: 3×-daily sweeps (not currently planned)
 
 The original architecture imagined 3×-daily sweeps accumulating into a
-single weekly report. That would require persistent shared state across
-runs (Postgres + a shared DB), which adds operational complexity. The
-ephemeral weekly model above gets you ~90% of the value at ~10% of the
-complexity. If you ever want to bring it back: add a Railway Postgres
-plugin, swap `aiosqlite` for an `asyncpg` driver in `lib/data_store.py`,
-add a second cron service for `sweep`, leave the existing service to run
-`report` weekly.
+single weekly report. The persistent `state` branch already removes the main
+blocker (cross-run state), so bringing it back is now mostly a scheduling
+change: add a second workflow (or cron entry) running `python main.py sweep`
+3× daily, and leave the weekly job to run `report`. For heavier concurrency
+you'd graduate the DB from SQLite to Postgres (swap `aiosqlite` for an
+`asyncpg` driver in `lib/data_store.py`).
 
 ### Cron timezone reference
 

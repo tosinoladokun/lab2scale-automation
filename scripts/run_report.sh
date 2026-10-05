@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Compile and send the weekly intelligence brief. Used by local cron / Railway.
+# Compile and send the weekly intelligence brief. Used for local / cron runs
+# (production scheduling is the GitHub Actions workflow).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

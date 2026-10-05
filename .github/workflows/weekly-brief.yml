@@ -1,0 +1,118 @@
+name: Weekly intelligence brief
+
+# Runs the full sweep + report (`python main.py full`) once a week, free, on a
+# GitHub-hosted runner. Replaces the old Railway cron service.
+#
+# The one wrinkle vs a persistent host: the runner is ephemeral, so the SQLite
+# dedup database (data/lab2scale.db) would be lost between runs — and without it
+# the brief re-reports the same companies every week (the search window is 30
+# days, so consecutive weekly runs overlap). We persist it as a single-commit,
+# force-pushed `state` branch: restored before the run, pushed back after a
+# successful send. The DB is tiny and never touches `main`.
+
+on:
+  schedule:
+    # Monday 16:00 UTC = 9:00am PT (PDT). Cron here is fixed-UTC and can't follow
+    # DST: 16:00 UTC is 9am PDT (summer) but 8am PST (winter). To hold 9am through
+    # winter switch to '0 17 * * 1'. For daily cadence use '0 16 * * *' and set
+    # RESEARCH_WINDOW_DAYS below to "1".
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Render the report to data/latest_report.html without sending email"
+        type: boolean
+        default: false
+
+# Never let two weekly runs race on the shared `state` branch.
+concurrency:
+  group: weekly-brief
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the dedup DB to the `state` branch
+    env:
+      DATABASE_URL: sqlite:///data/lab2scale.db
+      # Research (System 1) tuning — see .env.example for what each does.
+      RESEARCH_WINDOW_DAYS: "7"
+      RESEARCH_SEARCH_THRESHOLD: "6.0"
+      RESEARCH_SEARCH_DAYS: "30"
+      # Secrets — add under Settings → Secrets and variables → Actions.
+      # Required for `full`: ANTHROPIC_API_KEY, TAVILY_API_KEY, RESEND_API_KEY.
+      # Optional (features self-disable when unset): REPORT_*, LEADS_WEBAPP_*.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
+      REPORT_FROM: ${{ secrets.REPORT_FROM }}
+      REPORT_CC: ${{ secrets.REPORT_CC }}
+      LEADS_WEBAPP_URL: ${{ secrets.LEADS_WEBAPP_URL }}
+      LEADS_WEBAPP_SECRET: ${{ secrets.LEADS_WEBAPP_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore dedup database
+        run: |
+          mkdir -p data
+          if git fetch --depth 1 origin state 2>/dev/null; then
+            if git cat-file -e FETCH_HEAD:lab2scale.db 2>/dev/null; then
+              git show FETCH_HEAD:lab2scale.db > data/lab2scale.db
+              echo "Restored dedup DB ($(wc -c < data/lab2scale.db | tr -d ' ') bytes)."
+            else
+              echo "state branch has no DB file yet — starting fresh."
+            fi
+          else
+            echo "No state branch yet — first run, starting fresh."
+          fi
+
+      - name: Run weekly brief
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            python main.py full --dry-run
+          else
+            python main.py full
+          fi
+
+      - name: Upload rendered report (dry-run only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest_report
+          path: data/latest_report.html
+          if-no-files-found: ignore
+
+      # Only on a real (non-dry-run) send that succeeded. A failed run is NOT
+      # persisted, so the next run re-sweeps cleanly instead of inheriting a
+      # half-updated "reported" state.
+      - name: Persist dedup database
+        if: ${{ success() && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          if [ ! -f data/lab2scale.db ]; then
+            echo "No DB produced — nothing to persist."
+            exit 0
+          fi
+          work="$(mktemp -d)"
+          cp data/lab2scale.db "$work/lab2scale.db"
+          cd "$work"
+          git init -q
+          git checkout -q -b state
+          git add lab2scale.db
+          git -c user.name="brief-bot" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Update dedup DB — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" state:state
+          echo "Persisted dedup DB to the 'state' branch."

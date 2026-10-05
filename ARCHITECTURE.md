@@ -364,7 +364,7 @@ Automation/
 |---|---|---|
 | Claude API (Haiku — filtering) | $20-60 | ~21 sweeps/week × ~100 items × scoring |
 | Claude API (Sonnet — weekly summary) | $2-5 | 4 reports/month, ~100 items each |
-| Cloud hosting (Railway/Cloud Run) | $5-10 | Cron jobs, no always-on server |
+| Cloud hosting (GitHub Actions) | $0 | Weekly cron on the free Actions tier |
 | Resend email | $0 (free tier) | Under 100 emails/month |
 | **Total** | **~$27-75/mo** | Scales linearly with sources added |
 
@@ -373,7 +373,7 @@ Automation/
 ## Open Questions for Tosin
 
 1. **Your sources:** What specific websites, labs, or publications do you already track? I'll merge them into the domain/city YAML configs.
-2. **Deployment platform:** Railway, Google Cloud Run, or AWS Lambda?
+2. **Deployment platform:** GitHub Actions (free weekly cron — current) vs. a managed host if the cadence ever grows.
 3. **Data visibility:** Also write to a Google Sheet so the team can browse findings between reports?
 4. **Scoring criteria:** What makes a finding "high priority"? TRL level? Funding stage? Specific researchers or labs?
 

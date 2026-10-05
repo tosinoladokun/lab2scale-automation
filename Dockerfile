@@ -20,8 +20,11 @@ COPY . .
 # In production this should be a mounted volume so state survives restarts.
 RUN mkdir -p /app/data
 
-# Default — Railway services override this via startCommand:
-#   sweep service:  python main.py sweep
-#   report service: python main.py report
-#   weekly cron:    python main.py full   (sweep + report in one shot)
+# Default entrypoint. Production scheduling runs on GitHub Actions
+# (.github/workflows/weekly-brief.yml), which invokes `python main.py full`
+# directly on the runner and does not use this image — it's kept for local and
+# portable runs. Override the command for the other modes:
+#   sweep only:   python main.py sweep
+#   report only:  python main.py report
+#   weekly full:  python main.py full   (sweep + report in one shot)
 CMD ["python", "main.py", "full"]
